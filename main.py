@@ -1,4 +1,6 @@
-from flask import Flask, request, jsonify, render_template
+import os
+import pandas as pd
+from flask import Flask, request, jsonify, render_template, send_file
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 import torch
 from peft import PeftModel
@@ -32,6 +34,12 @@ albert_tokenizer = AutoTokenizer.from_pretrained(albert_model_dir, add_prefix_sp
 albert_adapters = AutoModelForSequenceClassification.from_pretrained(
     albert_model_checkpoint, num_labels=4, id2label=id2label, label2id=label2id)
 albert_model = PeftModel.from_pretrained(albert_adapters, albert_model_dir)
+
+models = {
+    "DistilBERT": (distillbert_model, distillbert_tokenizer),
+    "BERT4RE": (bert4re_model, bert4re_tokenizer),
+    "ALBERT": (albert_model, albert_tokenizer)
+}
 
 id2label = {0: 'bug report', 1: 'feature request', 2: 'rating', 3: 'user experience'}
 label2id = {label: id for id, label in id2label.items()}
@@ -110,7 +118,66 @@ def predict_route():
                     "bert4re_prediction": bert4re_prediction,
                     "albert_prediction": albert_prediction})
 
+# Single review page
+@app.route('/single-review', methods=['GET', 'POST'])
+def single_review():
+    if request.method == 'POST':
+        text = request.form['text']
+        predictions = {}
+        for model_name, (model, tokenizer) in models.items():
+            label, confidence, probabilities = predict(text, model, tokenizer)
+            predictions[model_name] = {
+                "label": label,
+                "confidence": confidence,
+                "probabilities": probabilities
+            }
+        return render_template('results.html', predictions=predictions, text=text)
+    return render_template('single_review.html')
 
+# Multiple reviews page
+@app.route('/multiple-reviews', methods=['GET', 'POST'])
+def multiple_reviews():
+    if request.method == 'POST':
+        file = request.files['file']
+        if not file:
+            return "No file selected", 400
+
+        df = pd.read_excel(file)
+
+        # Check if the necessary column exists
+        if 'review' not in df.columns:
+            return "The Excel file must contain a 'review' column", 400
+
+        # Dictionary to store DataFrames for each model
+        results = {name: df.copy() for name in models.keys()}
+
+        # Make predictions for each model
+        for index, review in df['review'].items():
+            for model_name, (model, tokenizer) in models.items():
+                label, confidence, probabilities = predict(review, model, tokenizer)
+                results[model_name].loc[index, 'prediction'] = label
+                results[model_name].loc[index, 'confidence'] = confidence
+
+        # Save the DataFrames to Excel files
+        output_files = {}
+        for model_name, result_df in results.items():
+            filename = f'{model_name}_predictions.xlsx'
+            result_df.to_excel(filename, index=False)
+            output_files[model_name] = filename
+
+        return render_template('results.html', output_files=output_files)
+
+    return render_template('multiple_reviews.html')
+
+# Route to download the generated Excel files
+@app.route('/download/<model_name>')
+def download_file(model_name):
+    filename = f'{model_name}_predictions.xlsx'
+    if os.path.exists(filename):
+        return send_file(filename, as_attachment=True)
+    else:
+        return "File not found", 404
+    
 # Route for serving the HTML page
 @app.route('/')
 def index():
