@@ -27,8 +27,8 @@ Here are some screenshots of the Flask app in action:
 
 
 ### Single Review Prediction
-![gui_single_review_results](https://github.com/user-attachments/assets/d115e60b-07cd-494b-86c6-9a32c05f9a47)
 ![gui_single_user_input](https://github.com/user-attachments/assets/eb278ff4-4fcb-4710-9d80-47727b1e65c3)
+![gui_single_review_results](https://github.com/user-attachments/assets/d115e60b-07cd-494b-86c6-9a32c05f9a47)
 
 
 ### Multiple Reviews Upload
